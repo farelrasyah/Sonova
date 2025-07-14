@@ -178,3 +178,7 @@ downloads/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# FFmpeg binaries (large files)
+ffmpeg/
+ffmpeg.exe
