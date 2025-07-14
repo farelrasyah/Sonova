@@ -86,145 +86,33 @@ class YouTubeDownloader:
             return None
     
     def download_audio(self, url, output_path):
-        """Download audio and convert to MP3"""
-        ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'quiet': False,  # Changed to see more detailed logs
-            'no_warnings': False,
-            'extract_flat': False,
-            'ignoreerrors': False,
-            # Headers to avoid bot detection
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'referer': 'https://www.youtube.com/',
-            # Cookies and session handling
-            'cookiefile': None,
-            'nocheckcertificate': False,
-            # Retry settings
-            'retries': 3,
-            'fragment_retries': 3,
-            # Rate limiting to avoid getting blocked
-            'sleep_interval': 1,
-            'max_sleep_interval': 5,
-            # FFmpeg location
-            'ffmpeg_location': './ffmpeg' if os.path.exists('./ffmpeg/ffmpeg.exe') else None,
-        }
-        
+        """Download audio and convert to MP3 using bypass"""
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # First extract info to ensure video is accessible
-                logger.info(f"Extracting info for audio download: {url}")
-                try:
-                    info = ydl.extract_info(url, download=False)
-                    if not info:
-                        logger.error("No video info extracted")
-                        return None, None
-                except Exception as info_error:
-                    logger.error(f"Cannot extract video info: {str(info_error)}")
-                    return None, None
-                
-                # Now download
-                logger.info(f"Starting audio download: {info.get('title', 'Unknown')}")
-                info = ydl.extract_info(url, download=True)
-                
-                title = info.get('title', 'audio')
-                safe_title = secure_filename(title)
-                
-                # Find the actual downloaded file
-                for file in os.listdir(output_path):
-                    if file.endswith('.mp3'):
-                        actual_file = os.path.join(output_path, file)
-                        # Rename to safe filename
-                        expected_file = os.path.join(output_path, f"{safe_title}.mp3")
-                        if actual_file != expected_file:
-                            os.rename(actual_file, expected_file)
-                        logger.info(f"Audio download completed: {expected_file}")
-                        return expected_file, safe_title
-                        
-                logger.error("No MP3 file found after download")
-                return None, None
+            logger.info(f"Downloading audio with bypass: {url}")
+            file_path, title = self.bypasser.download_safe(url, output_path, 'mp3')
+            if file_path and os.path.exists(file_path):
+                safe_title = secure_filename(title) if title else 'audio'
+                logger.info(f"Audio download completed: {file_path}")
+                return file_path, safe_title
+            logger.error("Audio download failed - no file created")
+            return None, None
         except Exception as e:
             logger.error(f"Error downloading audio: {str(e)}")
-            # If it's a bot detection error, suggest alternatives
-            if "Sign in to confirm" in str(e) or "bot" in str(e).lower():
-                logger.error("YouTube bot detection triggered. Try using a different video or wait before retrying.")
             return None, None
     
     def download_video(self, url, output_path, resolution=None):
-        """Download video with specified resolution"""
-        # Determine format selection based on resolution
-        if resolution and resolution in self.resolution_mapping:
-            format_selector = f"best[height<={resolution[:-1]}]"
-        else:
-            format_selector = 'best[ext=mp4]/best'
-        
-        ydl_opts = {
-            'format': format_selector,
-            'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
-            'merge_output_format': 'mp4',
-            'quiet': False,  # Changed to see more detailed logs
-            'no_warnings': False,
-            'extract_flat': False,
-            'ignoreerrors': False,
-            # Headers to avoid bot detection
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'referer': 'https://www.youtube.com/',
-            # Cookies and session handling
-            'cookiefile': None,
-            'nocheckcertificate': False,
-            # Retry settings
-            'retries': 3,
-            'fragment_retries': 3,
-            # Rate limiting to avoid getting blocked
-            'sleep_interval': 1,
-            'max_sleep_interval': 5,
-            # FFmpeg location
-            'ffmpeg_location': './ffmpeg' if os.path.exists('./ffmpeg/ffmpeg.exe') else None,
-        }
-        
+        """Download video with specified resolution using bypass"""
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # First extract info to ensure video is accessible
-                logger.info(f"Extracting info for video download: {url}")
-                try:
-                    info = ydl.extract_info(url, download=False)
-                    if not info:
-                        logger.error("No video info extracted")
-                        return None, None
-                except Exception as info_error:
-                    logger.error(f"Cannot extract video info: {str(info_error)}")
-                    return None, None
-                
-                # Now download
-                logger.info(f"Starting video download: {info.get('title', 'Unknown')}")
-                info = ydl.extract_info(url, download=True)
-                
-                title = info.get('title', 'video')
-                safe_title = secure_filename(title)
-                
-                # Find the actual downloaded file
-                for file in os.listdir(output_path):
-                    if file.endswith('.mp4'):
-                        actual_file = os.path.join(output_path, file)
-                        # Rename to safe filename
-                        expected_file = os.path.join(output_path, f"{safe_title}.mp4")
-                        if actual_file != expected_file:
-                            os.rename(actual_file, expected_file)
-                        logger.info(f"Video download completed: {expected_file}")
-                        return expected_file, safe_title
-                        
-                logger.error("No MP4 file found after download")
-                return None, None
+            logger.info(f"Downloading video with bypass: {url}, resolution: {resolution}")
+            file_path, title = self.bypasser.download_safe(url, output_path, 'mp4', resolution)
+            if file_path and os.path.exists(file_path):
+                safe_title = secure_filename(title) if title else 'video'
+                logger.info(f"Video download completed: {file_path}")
+                return file_path, safe_title
+            logger.error("Video download failed - no file created")
+            return None, None
         except Exception as e:
             logger.error(f"Error downloading video: {str(e)}")
-            # If it's a bot detection error, suggest alternatives
-            if "Sign in to confirm" in str(e) or "bot" in str(e).lower():
-                logger.error("YouTube bot detection triggered. Try using a different video or wait before retrying.")
             return None, None
 
 # Initialize downloader
@@ -271,32 +159,19 @@ def download_video():
         temp_dir = tempfile.mkdtemp(dir=TEMP_FOLDER)
         
         try:
-            # Get video info first
-            logger.info(f"Getting video info for: {url}")
-            video_info = downloader.get_video_info(url)
-            if not video_info:
-                logger.error("Unable to extract video information")
-                return jsonify({"error": "Unable to extract video information", "details": "The video may be private, deleted, or geo-blocked"}), 400
-            
-            logger.info(f"Video info extracted successfully: {video_info.get('title', 'Unknown')}")
-            
             # Download based on format
             if format_type == 'mp3':
-                logger.info("Starting MP3 download...")
                 file_path, title = downloader.download_audio(url, temp_dir)
                 if not file_path or not os.path.exists(file_path):
-                    logger.error("Failed to download audio")
-                    return jsonify({"error": "Failed to download audio", "details": "Audio extraction failed"}), 500
+                    return jsonify({"error": "Failed to download audio"}), 500
                 
                 filename = f"{title}.mp3"
                 mimetype = 'audio/mpeg'
                 
             elif format_type == 'mp4':
-                logger.info(f"Starting MP4 download with resolution: {resolution or 'best'}")
                 file_path, title = downloader.download_video(url, temp_dir, resolution)
                 if not file_path or not os.path.exists(file_path):
-                    logger.error("Failed to download video")
-                    return jsonify({"error": "Failed to download video", "details": "Video download failed"}), 500
+                    return jsonify({"error": "Failed to download video"}), 500
                 
                 filename = f"{title}.mp4"
                 mimetype = 'video/mp4'
@@ -319,9 +194,6 @@ def download_video():
             # Add headers
             response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
             response.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
-            
-            # Schedule cleanup (in production, use background task)
-            # cleanup()  # Commented out for now to ensure file is sent properly
             
             logger.info(f"Successfully downloaded: {filename}")
             return response
