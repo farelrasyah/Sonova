@@ -2,6 +2,8 @@ import os
 import re
 import tempfile
 import logging
+import threading
+import time
 from urllib.parse import urlparse, parse_qs
 from flask import Flask, request, jsonify, send_file, make_response
 from flask_cors import CORS
@@ -20,13 +22,17 @@ load_dotenv()
 app = Flask(__name__)
 
 # Configure CORS for all domains (sesuaikan dengan kebutuhan production)
-CORS(app, origins="*", methods=["GET", "POST"], allow_headers=["Content-Type"])
+CORS(app, origins="*", methods=["GET", "POST", "OPTIONS"], allow_headers=["Content-Type"])
 
 # Configuration
 app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH', 524288000))  # 500MB
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable caching for downloads
 TEMP_FOLDER = os.getenv('TEMP_FOLDER', './temp')
 PORT = int(os.getenv('PORT', 5000))
 DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+
+# Global cleanup tracker
+cleanup_tasks = []
 
 # Setup logging
 logging.basicConfig(
@@ -44,6 +50,22 @@ os.makedirs(TEMP_FOLDER, exist_ok=True)
 
 # Initialize advanced downloader
 downloader = AdvancedYouTubeDownloader()
+
+def delayed_cleanup(temp_dir, delay=60):
+    """Cleanup temp directory after a delay"""
+    def cleanup():
+        time.sleep(delay)
+        try:
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+                logger.info(f"Cleaned up temp directory: {temp_dir}")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup temp directory {temp_dir}: {e}")
+    
+    thread = threading.Thread(target=cleanup)
+    thread.daemon = True
+    thread.start()
+    cleanup_tasks.append(thread)
 
 @app.route('/', methods=['GET'])
 def index():
@@ -151,12 +173,15 @@ def download_video():
                 mimetype=mimetype
             ))
             
-            # Add headers
+            # Add headers for better compatibility
             response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
             response.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
             
-            # Schedule cleanup (in production, use background task)
-            # cleanup()  # Commented out for now to ensure file is sent properly
+            # Schedule delayed cleanup (60 seconds should be enough for download to complete)
+            delayed_cleanup(temp_dir, 60)
             
             logger.info(f"Successfully downloaded: {filename}")
             return response
@@ -309,9 +334,15 @@ def download_best_quality():
                 mimetype=mimetype
             ))
             
-            # Add headers
+            # Add headers for better compatibility
             response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
             response.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            
+            # Schedule delayed cleanup
+            delayed_cleanup(temp_dir, 60)
             
             logger.info(f"Successfully downloaded with best quality: {filename}")
             return response
@@ -327,6 +358,24 @@ def download_best_quality():
     except Exception as e:
         logger.error(f"Best quality download error: {str(e)}")
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
+
+@app.before_request
+def handle_preflight():
+    """Handle CORS preflight requests"""
+    if request.method == "OPTIONS":
+        response = make_response()
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add('Access-Control-Allow-Headers', "*")
+        response.headers.add('Access-Control-Allow-Methods', "*")
+        return response
+
+@app.after_request
+def after_request(response):
+    """Add CORS headers to all responses"""
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
 
 @app.errorhandler(413)
 def request_entity_too_large(error):

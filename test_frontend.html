@@ -289,6 +289,8 @@
         const resultContent = document.getElementById('resultContent');
 
         let currentFormat = 'mp3';
+        let downloadInProgress = false;
+        let downloadTimeout = null;
 
         // Format selection
         formatOptions.forEach(option => {
@@ -305,15 +307,58 @@
             });
         });
 
-        // Show loading
+        // Show loading with timeout protection
         function showLoading() {
             loading.style.display = 'block';
             result.style.display = 'none';
+            
+            // Clear any existing timeout
+            if (downloadTimeout) {
+                clearTimeout(downloadTimeout);
+            }
+            
+            // Set timeout for very long operations (5 minutes)
+            downloadTimeout = setTimeout(() => {
+                if (downloadInProgress) {
+                    showResult('error', '⏰ Download timeout. Silakan coba lagi dengan resolusi yang lebih rendah.');
+                    downloadInProgress = false;
+                    hideLoading();
+                }
+            }, 300000); // 5 minutes
         }
 
         // Hide loading
         function hideLoading() {
             loading.style.display = 'none';
+            if (downloadTimeout) {
+                clearTimeout(downloadTimeout);
+                downloadTimeout = null;
+            }
+            downloadInProgress = false;
+        }
+
+        // Enhanced fetch with retry mechanism
+        async function fetchWithRetry(url, options, retries = 3) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes per attempt
+                    
+                    const response = await fetch(url, {
+                        ...options,
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    return response;
+                } catch (error) {
+                    console.log(`Attempt ${i + 1} failed:`, error);
+                    if (i === retries - 1) throw error;
+                    
+                    // Wait before retry (exponential backoff)
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+                }
+            }
         }
 
         // Show result
@@ -338,7 +383,7 @@
                 const formData = new FormData();
                 formData.append('url', url);
 
-                const response = await fetch(`${API_BASE_URL}/info`, {
+                const response = await fetchWithRetry(`${API_BASE_URL}/info`, {
                     method: 'POST',
                     body: formData
                 });
@@ -376,7 +421,12 @@
                     showResult('error', `❌ Error: ${data.error}`);
                 }
             } catch (error) {
-                showResult('error', `❌ Error: ${error.message}`);
+                console.error('Info error:', error);
+                if (error.name === 'AbortError') {
+                    showResult('error', '⏰ Request timeout. Silakan coba lagi.');
+                } else {
+                    showResult('error', `❌ Error: ${error.message || 'Koneksi gagal'}`);
+                }
             } finally {
                 hideLoading();
             }
@@ -386,6 +436,11 @@
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             
+            if (downloadInProgress) {
+                showResult('error', '⏳ Download sedang berlangsung. Harap tunggu...');
+                return;
+            }
+            
             const url = urlInput.value.trim();
             
             if (!url) {
@@ -393,6 +448,7 @@
                 return;
             }
 
+            downloadInProgress = true;
             showLoading();
 
             try {
@@ -404,7 +460,7 @@
                     formData.append('resolution', resolutionSelect.value);
                 }
 
-                const response = await fetch(`${API_BASE_URL}/download`, {
+                const response = await fetchWithRetry(`${API_BASE_URL}/download`, {
                     method: 'POST',
                     body: formData
                 });
@@ -428,11 +484,22 @@
 
                     showResult('success', `✅ Download berhasil: ${filename}`);
                 } else {
-                    const errorData = await response.json();
-                    showResult('error', `❌ Error: ${errorData.error}`);
+                    let errorMessage = 'Unknown error';
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.error || errorMessage;
+                    } catch (e) {
+                        errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                    }
+                    showResult('error', `❌ Error: ${errorMessage}`);
                 }
             } catch (error) {
-                showResult('error', `❌ Error: ${error.message}`);
+                console.error('Download error:', error);
+                if (error.name === 'AbortError') {
+                    showResult('error', '⏰ Download timeout. Silakan coba lagi dengan resolusi yang lebih rendah atau coba lagi nanti.');
+                } else {
+                    showResult('error', `❌ Error: ${error.message || 'Koneksi gagal. Pastikan server berjalan dan coba lagi.'}`);
+                }
             } finally {
                 hideLoading();
             }
@@ -441,12 +508,13 @@
         // Test API connection on load
         window.addEventListener('load', async () => {
             try {
-                const response = await fetch(API_BASE_URL);
+                const response = await fetchWithRetry(API_BASE_URL, {}, 1);
                 if (!response.ok) {
                     showResult('error', '⚠️ Tidak dapat terhubung ke API. Pastikan server berjalan.');
                 }
             } catch (error) {
-                showResult('error', '⚠️ Tidak dapat terhubung ke API. Pastikan server berjalan.');
+                console.error('API connection test failed:', error);
+                showResult('error', '⚠️ Tidak dapat terhubung ke API. Pastikan server berjalan di http://localhost:5000');
             }
         });
     </script>

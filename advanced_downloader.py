@@ -55,12 +55,15 @@ class AdvancedYouTubeDownloader:
             'referer': 'https://www.youtube.com/',
             'sleep_interval': random.uniform(1, 3),
             'max_sleep_interval': 10,
-            'retries': 5,
-            'fragment_retries': 5,
+            'retries': 10,  # Increased retries
+            'fragment_retries': 10,  # Increased fragment retries
             'skip_unavailable_fragments': True,
+            'abort_on_unavailable_fragments': False,  # Don't abort on unavailable fragments
             'http_chunk_size': 10485760,  # 10MB chunks
             'nocheckcertificate': False,
             'prefer_insecure': False,
+            'socket_timeout': 30,  # Add socket timeout
+            'read_timeout': 30,  # Add read timeout
             # Quality optimization settings
             'youtube_include_dash_manifest': True,
             'youtube_include_hls_manifest': True,

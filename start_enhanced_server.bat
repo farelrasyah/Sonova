@@ -20,6 +20,11 @@ if %errorlevel% neq 0 (
 echo ✅ Python found: 
 python --version
 
+REM Run auto-fix first
+echo.
+echo 🔧 Running auto-fix...
+python autofix.py
+
 REM Check if required packages are installed
 echo.
 echo 📦 Checking dependencies...
